@@ -32,13 +32,13 @@ class AlmostParal:
                 #         # T.reads(Y[n, i, j], A[n, i, k], B[n, k, j])
                 #         # T.writes(Y[n, i, j])
                 #         Y[n, i, j] = Y[n, i, j] + A[n, i, k] * B[n, k, j]
-                # for ax0 in range(8):
-                #     with T.block("C"):
-                #         n, i = T.axis.remap("SS", [i0, i1])
-                #         j = T.axis.spatial(128, i2_0 * 8 + ax0)
-                #         # T.reads(Y[n, i, j])
-                #         # T.writes(C[n, i, j])
-                #         C[n, i, j] = T.max(Y[n, i, j], T.float32(0.0))
+                for ax0 in range(8):
+                    with T.block("C"):
+                        n, i = T.axis.remap("SS", [i0, i1])
+                        j = T.axis.spatial(128, i2_0 * 8 + ax0)
+                        # T.reads(Y[n, i, j])
+                        # T.writes(C[n, i, j])
+                        C[n, i, j] = T.max(Y[n, i, j], T.float32(0.0))
 
 
 a = np.random.rand(*in_shape).astype("float32")
