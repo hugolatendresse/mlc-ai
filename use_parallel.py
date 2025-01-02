@@ -40,7 +40,41 @@ class AlreadyParal:
                         # T.writes(C[n, i, j])
                         C[n, i, j] = T.max(Y[n, i, j], T.float32(0.0))
 
+@tvm.script.ir_module
+class AlmostParal:
+    @T.prim_func
+    def bmm_relu(A: T.Buffer((16, 128, 128), "float32"), B: T.Buffer((16, 128, 128), "float32"), C: T.Buffer((16, 128, 128), "float32")):
+        T.func_attr({"global_symbol": "bmm_relu", "tir.noalias": True})
+        # with T.block("root"):
+        Y = T.alloc_buffer((16, 128, 128))
+        for i0 in T.grid(16):
+            for i1, i2_0 in T.grid(128, 16):
+                for i2_1_init in T.vectorized(8):
+                    with T.block("Y_init"):
+                        n, i = T.axis.remap("SS", [i0, i1])
+                        j = T.axis.spatial(128, i2_0 * 8 + i2_1_init)
+                        # T.reads()
+                        # T.writes(Y[n, i, j])
+                        Y[n, i, j] = T.float32(0.0)
+                for i2_1, ax_0, ax_1 in T.grid(8, 32, 4):
+                    with T.block("Y_update"):
+                        n, i = T.axis.remap("SS", [i0, i1])
+                        j = T.axis.spatial(128, i2_0 * 8 + i2_1)
+                        k = T.axis.reduce(128, ax_0 * 4 + ax_1)
+                        # T.reads(Y[n, i, j], A[n, i, k], B[n, k, j])
+                        # T.writes(Y[n, i, j])
+                        Y[n, i, j] = Y[n, i, j] + A[n, i, k] * B[n, k, j]
+                for ax0 in range(8):
+                    with T.block("C"):
+                        n, i = T.axis.remap("SS", [i0, i1])
+                        j = T.axis.spatial(128, i2_0 * 8 + ax0)
+                        # T.reads(Y[n, i, j])
+                        # T.writes(C[n, i, j])
+                        C[n, i, j] = T.max(Y[n, i, j], T.float32(0.0))
 
+
+
+# TODO make this parallel across i0!
 @tvm.script.ir_module
 class ToParal:
     @T.prim_func
@@ -91,31 +125,33 @@ rt_lib["bmm_relu"](a_tvm, b_tvm, c_tvm)
 to_paral = c_tvm.numpy()
 # print(to_paral)
 
+
+rt_lib1 = tvm.build(AlmostParal, target="llvm")
+a_tvm1 = tvm.nd.array(a)
+b_tvm1 = tvm.nd.array(n)
+c_tvm1 = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
+rt_lib1["bmm_relu"](a_tvm1, b_tvm1, c_tvm1)
+almost_paral = c_tvm1.numpy()
+# print(almost_paral)
+
+
 rt_lib2 = tvm.build(AlreadyParal, target="llvm")
 a_tvm2 = tvm.nd.array(a)
 b_tvm2 = tvm.nd.array(n)
 c_tvm2 = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
-rt_lib["bmm_relu"](a_tvm2, b_tvm2, c_tvm2)
-already_paral = c_tvm.numpy()
+rt_lib2["bmm_relu"](a_tvm2, b_tvm2, c_tvm2)
+already_paral = c_tvm2.numpy()
 # print(already_paral)
 
 np.testing.assert_allclose(to_paral, already_paral)
+np.testing.assert_allclose(to_paral, almost_paral)
 
 
-sch = tvm.tir.Schedule(ToParal)
-
+sch = tvm.tir.Schedule(AlmostParal)
 Y_init = sch.get_block("Y_init", func_name="bmm_relu")
 Y_update = sch.get_block("Y_update", func_name="bmm_relu")
-
-
-
-sch.mod.show()
-
-# Step 5. vectorize / parallel / unroll
 i0, i1, i2_0, i2_1_init = sch.get_loops(Y_init)
-sch.vectorize(loop=i2_1_init)
-sch.mod.show()
-sch.parallel(loop=i0)
+sch.parallel(loop=i0) # TODO comprendre pourquoi Almost Paral ne peut pas etre converti!!!
 sch.mod.show()
 sch.unroll(...)
 ...
