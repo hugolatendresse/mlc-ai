@@ -39,21 +39,21 @@ class MyModule:
         # tir.noalis means that buffer memory areas do not overlap
         T.func_attr({"global_symbol": "mm_relu", "tir.noalias": True})
         Y = T.alloc_buffer((128, 128), dtype="float32")
-        for i, j, k in T.grid(128, 128, 128):
+        for iY, jY, kY in T.grid(128, 128, 128):
             with T.block("Y"):
                 # Note: the three lines below are equivalent to just this one line
                 # vi, vj, vk = T.axis.remap("SSR", [i,j,k]) # SSR means spatial spatial reduce
-                vi = T.axis.spatial(128, i)
-                vj = T.axis.spatial(128, j)
-                vk = T.axis.reduce(128, k)
+                vi = T.axis.spatial(128, iY)
+                vj = T.axis.spatial(128, jY)
+                vk = T.axis.reduce(128, kY)
                 with T.init():
                     Y[vi, vj] = T.float32(0)
                 Y[vi, vj] = Y[vi, vj] + A[vi, vk] * B[vk, vj]
-        for i, j in T.grid(128, 128):
+        for iC, jC in T.grid(128, 128):
             with T.block("C"):
                 # Two lines below are equivalent to T.axis.remap("SS", [i,j])
-                vi = T.axis.spatial(128, i)
-                vj = T.axis.spatial(128, j)
+                vi = T.axis.spatial(128, iC)
+                vj = T.axis.spatial(128, jC)
                 C[vi, vj] = T.max(Y[vi, vj], T.float32(0))
 
 sch = tvm.tir.Schedule(MyModule)

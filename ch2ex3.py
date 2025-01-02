@@ -6,11 +6,12 @@ from tvm.ir.module import IRModule
 from tvm.script import tir as T
 
 N, I, J, K = 16, 128, 128, 128
+in_shape = (N,I,J)
 
 @tvm.script.ir_module
 class TargetModule:
     @T.prim_func
-    def bmm_relu(A: T.Buffer((16, 128, 128), "float32"), B: T.Buffer((16, 128, 128), "float32"), C: T.Buffer((16, 128, 128), "float32")) -> None:
+    def bmm_relu(A: T.Buffer(in_shape, "float32"), B: T.Buffer(in_shape, "float32"), C: T.Buffer(in_shape, "float32")) -> None:
         T.func_attr({"global_symbol": "bmm_relu", "tir.noalias": True})
         Y = T.alloc_buffer([16, 128, 128], dtype="float32")
         for i0 in T.parallel(16):
@@ -42,43 +43,42 @@ class MyBmmRelu:
                  C : T.buffer(shape=(N, I, J), dtype="float32")):
         T.func_attr({"global_symbol": "bmm_relu", "tir.noalias": True})
         Y = T.alloc_buffer((N, I, J), dtype="float32")
-        for n, i, j, k in T.grid(N, I, J, K):
+        for i0, i1, i2, ax in T.grid(N, I, J, K):
             with T.block("Y"):
-                vn = T.axis.spatial(N, n)
-                vi = T.axis.spatial(I, i)
-                vj = T.axis.spatial(J, j)
-                vk = T.axis.reduce(K, k)
+                n = T.axis.spatial(N, i0)
+                i = T.axis.spatial(I, i1)
+                j = T.axis.spatial(J, i2)
+                k = T.axis.reduce(K, ax)
                 with T.init():
-                    Y[vn, vi, vj] = T.float32(0)
-                Y[vn, vi, vj] = Y[vn, vi, vj] + A[vn, vi, vk] * B[vn, vk, vj]
-        for n, i, j in T.grid(N, I, J):
+                    Y[n, i, j] = T.float32(0)
+                Y[n, i, j] = Y[n, i, j] + A[n, i, k] * B[n, k, j]
+        for i0, i1, i2 in T.grid(N, I, J):
             with T.block("C"):
-                vn = T.axis.spatial(N, n)
-                vi = T.axis.spatial(I, i)
-                vj = T.axis.spatial(J, j)
-                C[vn, vi, vj] = T.max(Y[vn, vi, vj], T.float32(0))
+                n = T.axis.spatial(N, i0)
+                i = T.axis.spatial(I, i1)
+                j = T.axis.spatial(J, i2)
+                C[n, i, j] = T.max(Y[n, i, j], T.float32(0))
 
-in_shape = (N,I,J)
 
 a = np.random.rand(*in_shape).astype("float32")
-b = np.random.rand(*in_shape).astype("float32")
+n = np.random.rand(*in_shape).astype("float32")
 # a = np.ones(in_shape).astype("float32")
 # b = np.ones(in_shape).astype("float32")
 
 
-expected = a @ b
+expected = a @ n
 
 
 
 rt_lib = tvm.build(MyBmmRelu, target="llvm")
 a_tvm = tvm.nd.array(a)
-b_tvm = tvm.nd.array(b)
+b_tvm = tvm.nd.array(n)
 c_tvm = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
 rt_lib["bmm_relu"](a_tvm, b_tvm, c_tvm)
 
 rt_lib_target = tvm.build(TargetModule, target="llvm")
 a_tvm2 = tvm.nd.array(a)
-b_tvm2 = tvm.nd.array(b)
+b_tvm2 = tvm.nd.array(n)
 c_tvm_target = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
 rt_lib_target["bmm_relu"](a_tvm2, b_tvm2, c_tvm_target)
 
@@ -94,25 +94,36 @@ sch = tvm.tir.Schedule(MyBmmRelu)
 
 # Step 1. Get blocks
 Y = sch.get_block("Y", func_name="bmm_relu")
-...
+C = sch.get_block("C", func_name="bmm_relu")
+
 
 # Step 2. Get loops
-b, i, j, k = sch.get_loops(Y)
-...
+i0, i1, i2, ax = sch.get_loops(Y)
+# nC, iC, jC = sch.get_loops(C)
 
 # Step 3. Organize the loops
-k0, k1 = sch.split(k, ...)
-sch.reorder(...)
-sch.compute_at/reverse_compute_at(...)
-...
+kfactor = 4
+ax1_0, ax1_1 = sch.split(ax, [None, kfactor])
+jfactor = 8
+i2_0, ax0_init = sch.split(i2, [None, jfactor])
+# sch.reorder(kY_0, kY_1, i2)
+
+
+sch.reverse_compute_at(block=C, loop=i2_0)
+sch.mod.show()
 
 # Step 4. decompose reduction
-Y_init = sch.decompose_reduction(Y, ...)
-...
+i0, i1, i2_0, i2_1, ax_0, ax_1 = sch.get_loops(Y)
+Y_init = sch.decompose_reduction(block=Y, loop=i2_1)
+Y_update = sch.get_block("Y_update", func_name="bmm_relu")
+sch.mod.show()
 
 # Step 5. vectorize / parallel / unroll
-sch.vectorize(...)
-sch.parallel(...)
+i0, i1, i2_0, i2_1_init = sch.get_loops(Y_init)
+sch.vectorize(loop=i2_1_init)
+sch.mod.show()
+sch.parallel(loop=i0)
+sch.mod.show()
 sch.unroll(...)
 ...
 
