@@ -17,28 +17,28 @@ class AlmostParal:
         Y = T.alloc_buffer((16, 128, 128))
         for i0 in T.grid(16):
             for i1, i2_0 in T.grid(128, 16):
-                for i2_1_init in T.vectorized(8):
-                    with T.block("Y_init"):
-                        n, i = T.axis.remap("SS", [i0, i1])
-                        j = T.axis.spatial(128, i2_0 * 8 + i2_1_init)
-                        # T.reads()
-                        # T.writes(Y[n, i, j])
-                        Y[n, i, j] = T.float32(0.0)
-                # for i2_1, ax_0, ax_1 in T.grid(8, 32, 4):
-                #     with T.block("Y_update"):
+                # for i2_1_init in T.vectorized(8):
+                #     with T.block("Y_init"):
                 #         n, i = T.axis.remap("SS", [i0, i1])
-                #         j = T.axis.spatial(128, i2_0 * 8 + i2_1)
-                #         k = T.axis.reduce(128, ax_0 * 4 + ax_1)
+                #         j = T.axis.spatial(128, i2_0 * 8 + i2_1_init)
+                #         # T.reads()
+                #         # T.writes(Y[n, i, j])
+                #         Y[n, i, j] = T.float32(0.0)
+                for i2_1, ax_0, ax_1 in T.grid(8, 32, 4):
+                    with T.block("Y_update"):
+                        # n, i = T.axis.remap("SS", [i0, i1])
+                        # j = T.axis.spatial(128, i2_0 * 8 + i2_1)
+                        k = T.axis.reduce(128, ax_0 * 4 + ax_1) # TODO this line is the issue!
                 #         # T.reads(Y[n, i, j], A[n, i, k], B[n, k, j])
                 #         # T.writes(Y[n, i, j])
                 #         Y[n, i, j] = Y[n, i, j] + A[n, i, k] * B[n, k, j]
-                for ax0 in range(8):
-                    with T.block("C"):
-                        n, i = T.axis.remap("SS", [i0, i1])
-                        j = T.axis.spatial(128, i2_0 * 8 + ax0)
-                        # T.reads(Y[n, i, j])
-                        # T.writes(C[n, i, j])
-                        C[n, i, j] = T.max(Y[n, i, j], T.float32(0.0))
+                # for ax0 in range(8):
+                #     with T.block("C"):
+                #         n, i = T.axis.remap("SS", [i0, i1])
+                #         j = T.axis.spatial(128, i2_0 * 8 + ax0)
+                #         # T.reads(Y[n, i, j])
+                #         # T.writes(C[n, i, j])
+                #         C[n, i, j] = T.max(Y[n, i, j], T.float32(0.0))
 
 
 a = np.random.rand(*in_shape).astype("float32")
@@ -55,9 +55,10 @@ almost_paral = c_tvm1.numpy()
 
 
 sch = tvm.tir.Schedule(AlmostParal)
-Y_init = sch.get_block("Y_init", func_name="bmm_relu")
-# Y_update = sch.get_block("Y_update", func_name="bmm_relu")
-i0, i1, i2_0, i2_1_init = sch.get_loops(Y_init)
+# Y_init = sch.get_block("Y_init", func_name="bmm_relu")
+Y_update = sch.get_block("Y_update", func_name="bmm_relu")
+# i0, i1, i2_0, i2_1_init = sch.get_loops(Y_init)
+i0, i1, i2_0, i2_1, ax_0, ax_1 = sch.get_loops(Y_update)
 sch.parallel(loop=i0) # TODO comprendre pourquoi Almost Paral ne peut pas etre converti!!!
 sch.mod.show()
 
