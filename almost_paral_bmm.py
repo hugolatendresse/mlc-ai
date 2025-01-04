@@ -17,7 +17,7 @@ class AlmostParal:
             for ax_0 in T.grid(128):
                 with T.block("C"):
                     n, i, j = T.axis.remap("SSS", [i0, i1, i2])
-                    k = T.axis.reduce(128, ax_0 ) # TODO this line is the issue!
+                    k = T.axis.reduce(128, ax_0) # TODO this line is the issue!
                     C[n, i, j] = C[n, i, j] + A[n, i, k] * B[n, k, j]
 
 a = np.random.rand(*in_shape).astype("float32")
