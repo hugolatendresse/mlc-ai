@@ -27,7 +27,7 @@ expected = c.copy()
 for i in range(I):
     for j in range(J):
         for k in range(K):
-            expected[i,j] = expected[i,j] + a[i,k] + b[k, j]
+            expected[i,j] = expected[i,j] + a[i,k] * b[k, j]
 
 rt_lib1 = tvm.build(AlmostParal, target="llvm")
 a_tvm1 = tvm.nd.array(a)
