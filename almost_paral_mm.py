@@ -5,20 +5,30 @@ import tvm
 from tvm.ir.module import IRModule
 from tvm.script import tir as T
 
-I, J, K = 3, 3, 3
+I, J, K = 8, 8, 8
 in_shape = (I,J)
+
 
 @tvm.script.ir_module
 class AlmostParal:
     @T.prim_func
-    def mm(A: T.Buffer(in_shape, "float32"), B: T.Buffer(in_shape, "float32"), C: T.Buffer(in_shape, "float32")):
-        T.func_attr({"global_symbol": "mm", "tir.noalias": True})
-        for i1, i2 in T.grid(J, K):
-            for ax_0 in T.grid(K):
+    def mm(A: T.Buffer((8, 8), "float32"), B: T.Buffer((8, 8), "float32"), C: T.Buffer((8, 8), "float32")):
+        T.func_attr({"tir.noalias": T.bool(True)})
+        for i0_i1 in T.parallel(64):  # Fused i0 and i1 for parallelism
+            i0 = i0_i1 // 8
+            i1 = i0_i1 % 8
+            with T.block("C_init"):
+                i, j = T.axis.remap("SS", [i0, i1])
+                T.reads()
+                T.writes(C[i, j])
+                C[i, j] = 0.0
+            for ax_0 in range(8):
                 with T.block("C"):
-                    i, j = T.axis.remap("SS", [i1, i2])
-                    k = T.axis.reduce(K, ax_0) # TODO this line is the issue!
+                    i, j, k = T.axis.remap("SSR", [i0, i1, ax_0])
+                    T.reads(C[i, j], A[i, k], B[k, j])
+                    T.writes(C[i, j])
                     C[i, j] = C[i, j] + A[i, k] * B[k, j]
+
 
 a = np.random.rand(*in_shape).astype("float32")
 b = np.random.rand(*in_shape).astype("float32")
@@ -26,6 +36,7 @@ c = np.random.rand(*in_shape).astype("float32")
 expected = c.copy()
 for i in range(I):
     for j in range(J):
+        expected[i,j] = 0.0
         for k in range(K):
             expected[i,j] = expected[i,j] + a[i,k] * b[k, j]
 
@@ -40,13 +51,15 @@ almost_paral = c_tvm1.numpy()
 np.testing.assert_allclose(actual=almost_paral, desired=expected)
 
 sch = tvm.tir.Schedule(AlmostParal)
-# Y_init = sch.get_block("Y_init", func_name="bmm_relu")
-# Y_update = sch.get_block("Y_update", func_name="bmm_relu")
-C = sch.get_block("C", func_name="bmm_relu")
-# i0, i1, i2_0, i2_1_init = sch.get_loops(Y_init)
-# i0, i1, i2_0, i2_1, ax_0, ax_1 = sch.get_loops(Y_update)
-i0, i1, i2, ax_0 = sch.get_loops(C)
-sch.parallel(loop=i0) # TODO comprendre pourquoi Almost Paral ne peut pas etre converti!!!
+C_init = sch.get_block("C_init", func_name="mm")
+C = sch.get_block("C", func_name="mm")
+toute = sch.get_block("toute", func_name="mm")
+i0_i1 = sch.get_loops(C_init)
+i0_i1, ax0 = sch.get_loops(C)
+
+# TODO comprendre pourquoi parallel doesn't work!!!
+sch.parallel(i0)
+sch.parallel(loop=i0)
 sch.mod.show()
 
 # TODO
