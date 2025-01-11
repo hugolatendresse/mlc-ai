@@ -93,13 +93,29 @@ C = sch.get_block("C", func_name="bmm_relu")
 i0, i1, i2, ax = sch.get_loops(Y)
 
 # Step 3. Organize the loops
+sch.reverse_compute_at(block=C, loop=i0)
+sch.parallel(loop=i0)
+IPython.display.Code(sch.mod.script(), language="python")
+
+i2_0, i2_1 = sch.split(i2, [16, 8])
+IPython.display.Code(sch.mod.script(), language="python")
+
+Y = sch.get_block("Y", func_name="bmm_relu")
+i0, i1, i2_0, i2_1, ax = sch.get_loops(Y)
+C = sch.get_block("C", func_name="bmm_relu")
+i0, ax0, ax1 = sch.get_loops(C)
+
+sch.reverse_compute_at(block=C, loop=i2_0)
+IPython.display.Code(sch.mod.script(), language="python")
+
+
+
+
 ax0, ax1 = sch.split(ax, [32, 4])
 # i2_0, i2_1 = sch.split(ax, [32, 4]) # TODO split more
 # sch.reorder(i0, i1, ax0, ax1, i2_0, i2_1)
 sch.reorder(i0, i1, ax0, ax1, i2)
-sch.reverse_compute_at(block=Y, loop=i2)
 IPython.display.Code(sch.mod.script(), language="python")
-sch.compute_at/reverse_compute_at(...)
 
 # Step 4. decompose reduction
 Y_init = sch.decompose_reduction(Y, ...)
