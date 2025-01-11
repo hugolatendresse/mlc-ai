@@ -124,3 +124,15 @@ sch.unroll(...)
 ...
 
 IPython.display.Code(sch.mod.script(), language="python")
+
+
+
+
+# Final check for correctness
+rt_lib_check = tvm.build(sch.mod, target="llvm")
+a_check = tvm.nd.array(a)
+b_check = tvm.nd.array(n)
+c_check = tvm.nd.array(np.random.rand(N, I, J).astype("float32"))
+rt_lib_check["bmm_relu"](a_check, b_check, c_check)
+check_actual = c_check.numpy()
+np.testing.assert_allclose(actual=check_actual, desired=expected, atol=0.001, rtol=0.001)
