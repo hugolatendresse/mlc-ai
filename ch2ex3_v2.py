@@ -108,14 +108,10 @@ i0, ax0, ax1 = sch.get_loops(C)
 sch.reverse_compute_at(block=C, loop=i2_0)
 IPython.display.Code(sch.mod.script(), language="python")
 
-
-
-
-ax0, ax1 = sch.split(ax, [32, 4])
-# i2_0, i2_1 = sch.split(ax, [32, 4]) # TODO split more
-# sch.reorder(i0, i1, ax0, ax1, i2_0, i2_1)
-sch.reorder(i0, i1, ax0, ax1, i2)
+i0, i1, i2_0, i2_1 = sch.get_loops(C)
+sch.vectorize(i2_1)
 IPython.display.Code(sch.mod.script(), language="python")
+
 
 # Step 4. decompose reduction
 Y_init = sch.decompose_reduction(Y, ...)
