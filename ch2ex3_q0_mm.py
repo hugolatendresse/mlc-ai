@@ -25,7 +25,8 @@ class MatMul:
 a = np.random.rand(*in_shape).astype("float32")
 b = np.random.rand(*in_shape).astype("float32")
 c = np.random.rand(*in_shape).astype("float32")
-expected = c.copy()
+expected = np.random.rand(*in_shape).astype("float32")
+
 for i in range(I):
     for j in range(J):
         expected[i,j] = 0.0
@@ -44,9 +45,23 @@ np.testing.assert_allclose(actual=almost_paral, desired=expected)
 
 sch = tvm.tir.Schedule(MatMul)
 
-# TODO attempt below to parallelize by i0 don't work
+
 C = sch.get_block("C", func_name="mm")
 i0, i1, ax0 = sch.get_loops(C)
-sch.parallel(loop=i0) # TODO doesn't work
+sch.parallel(loop=i0) # able to parallelize with only one block!
+IPython.display.Code(sch.mod.script(), language="python")
+
+
+
+# Final check for correctness
+rt_lib2 = tvm.build(sch.mod, target="llvm")
+a_tvm2 = tvm.nd.array(a)
+b_tvm2 = tvm.nd.array(b)
+c_tvm2 = tvm.nd.array(c)
+rt_lib2["mm"](a_tvm2, b_tvm2, c_tvm2)
+done2 = c_tvm2.numpy()
+np.testing.assert_allclose(actual=done2, desired=expected)
+
+
 
 
