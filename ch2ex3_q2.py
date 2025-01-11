@@ -14,7 +14,7 @@ class TargetModule:
     def bmm_relu(A: T.Buffer(in_shape, "float32"), B: T.Buffer(in_shape, "float32"), C: T.Buffer(in_shape, "float32")) -> None:
         T.func_attr({"global_symbol": "bmm_relu", "tir.noalias": True})
         Y = T.alloc_buffer([16, 128, 128], dtype="float32")
-        for i0 in T.parallel(16):
+        for i0 in T.grid(16):
             for i1, i2_0 in T.grid(128, 16):
                 for ax0_init in T.vectorized(8):
                     with T.block("Y_init"):
@@ -82,61 +82,31 @@ expected_tvm = c_tvm_target.numpy()
 np.testing.assert_allclose(actual_tvm, expected_tvm, rtol=1e-5)
 
 sch = tvm.tir.Schedule(MyBmmRelu)
-# Hints: you can use
-# `IPython.display.Code(sch.mod.script(), language="python")`
-# or `print(sch.mod.script())`
-# to show the current program at any time during the transformation.
 
 # Step 1. Get blocks
 Y = sch.get_block("Y", func_name="bmm_relu")
 C = sch.get_block("C", func_name="bmm_relu")
 
-
 # Step 2. Get loops
 i0, i1, i2, ax = sch.get_loops(Y)
-# nC, iC, jC = sch.get_loops(C)
 
 # Step 3. Organize the loops
-kfactor = 4
-ax1_0, ax1_1 = sch.split(ax, [None, kfactor])
-jfactor = 8
-i2_0, ax0_init = sch.split(i2, [None, jfactor])
-# sch.reorder(kY_0, kY_1, i2)
-
-
-sch.reverse_compute_at(block=C, loop=i2_0)
-sch.mod.show()
+ax0, ax1 = sch.split(ax, [32, 4])
+# i2_0, i2_1 = sch.split(ax, [32, 4]) # TODO split more
+# sch.reorder(i0, i1, ax0, ax1, i2_0, i2_1)
+sch.reorder(i0, i1, ax0, ax1, i2)
+sch.reverse_compute_at(block=Y, loop=i2)
+IPython.display.Code(sch.mod.script(), language="python")
+sch.compute_at/reverse_compute_at(...)
 
 # Step 4. decompose reduction
-i0, i1, i2_0, i2_1, ax_0, ax_1 = sch.get_loops(Y)
-Y_init = sch.decompose_reduction(block=Y, loop=i2_1)
-Y_update = sch.get_block("Y_update", func_name="bmm_relu")
-sch.mod.show()
+Y_init = sch.decompose_reduction(Y, ...)
+...
 
 # Step 5. vectorize / parallel / unroll
-i0, i1, i2_0, i2_1_init = sch.get_loops(Y_init)
-sch.vectorize(loop=i2_1_init)
-sch.mod.show()
-sch.parallel(loop=i0)
-sch.mod.show()
+sch.vectorize(...)
+sch.parallel(...)
 sch.unroll(...)
 ...
 
 IPython.display.Code(sch.mod.script(), language="python")
-
-tvm.ir.assert_structural_equal(sch.mod, TargetModule)
-print("Pass")
-
-before_rt_lib = tvm.build(MyBmmRelu, target="llvm")
-after_rt_lib = tvm.build(sch.mod, target="llvm")
-a_tvm = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
-b_tvm = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
-c_tvm = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
-after_rt_lib["bmm_relu"](a_tvm, b_tvm, c_tvm)
-before_timer = before_rt_lib.time_evaluator("bmm_relu", tvm.cpu())
-print("Before transformation:")
-print(before_timer(a_tvm, b_tvm, c_tvm))
-
-f_timer = after_rt_lib.time_evaluator("bmm_relu", tvm.cpu())
-print("After transformation:")
-print(f_timer(a_tvm, b_tvm, c_tvm))

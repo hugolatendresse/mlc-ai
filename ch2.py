@@ -1,7 +1,6 @@
 import IPython
 import numpy as np
 import tvm
-from django.templatetags.i18n import language
 from tvm.ir.module import IRModule
 from tvm.script import tir as T
 
@@ -58,13 +57,16 @@ class MyModule:
 
 sch = tvm.tir.Schedule(MyModule)
 block_Y = sch.get_block("Y", func_name="mm_relu")
-i, j, k = sch.get_loops(block_Y)
-j0, j1 = sch.split(j, factors=[None, 4])
-sch.reorder(j0, k, j1)
+iY, jY, kY = sch.get_loops(block_Y)
+jY_0, jY_1 = sch.split(jY, factors=[None, 4])
+sch.reorder(jY_0, kY, jY_1)
 block_C = sch.get_block("C", "mm_relu")
-sch.reverse_compute_at(block_C, j0)
+IPython.display.Code(sch.mod.script(), language="python")
+sch.reverse_compute_at(block_C, jY_0)
+IPython.display.Code(sch.mod.script(), language="python")
+
 # IPython.display.Code(sch.mod.script(), language="python")
-sch.decompose_reduction(block_Y, k)
+sch.decompose_reduction(block_Y, kY)
 # IPython.display.Code(sch.mod.script(), language='python')
 
 rt_lib = tvm.build(MyModule, target='llvm')
@@ -113,8 +115,8 @@ IPython.display.Code(mod_transformed.script(), language="python")
 from tvm import te
 A = te.placeholder((128,128), "float32", name='A')
 B = te.placeholder((128, 128), "float32", name='B')
-k = te.reduce_axis((0, 128), 'k')
-Y = te.compute((128, 128), lambda i, j: te.sum(A[i,k] * B[k, j], axis=k), name='Y')
+kY = te.reduce_axis((0, 128), 'k')
+Y = te.compute((128, 128), lambda i, j: te.sum(A[i,kY] * B[kY, j], axis=kY), name='Y')
 C = te.compute((128,128), lambda i, j: te.max(Y[i,j], 0), name="C")
 
 te_func = te.create_prim_func([A,B,C]).with_attr({"global_symbol": "mm_relu"})
