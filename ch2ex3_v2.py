@@ -100,22 +100,28 @@ IPython.display.Code(sch.mod.script(), language="python")
 
 Y = sch.get_block("Y", func_name="bmm_relu")
 i0, i1, i2_0, i2_1, ax = sch.get_loops(Y)
-C = sch.get_block("C", func_name="bmm_relu")
-i0, ax0, ax1 = sch.get_loops(C)
+# i0, ax0, ax1 = sch.get_loops(C)
+
+# Step 4. decompose reduction
+Y_init = sch.decompose_reduction(Y, i2_1)
+IPython.display.Code(sch.mod.script(), language="python")
 
 sch.reverse_compute_at(block=C, loop=i2_0)
 IPython.display.Code(sch.mod.script(), language="python")
 
+C = sch.get_block("C", func_name="bmm_relu")
 i0, i1, i2_0, i2_1 = sch.get_loops(C)
 sch.vectorize(i2_1)
 IPython.display.Code(sch.mod.script(), language="python")
 
 
-# Step 4. decompose reduction
-Y_init = sch.decompose_reduction(Y, ...)
-...
-
 # Step 5. vectorize / parallel / unroll
+Y_update = sch.get_block("Y_update")
+i0, i1, i2_0, i2_1, ax = sch.get_loops(Y_update)
+ax_0, ax_1 = sch.split(ax, [32, 4])
+sch.reorder(ax_0, ax_1, i2_1)
+IPython.display.Code(sch.mod.script(), language="python")
+
 sch.vectorize(...)
 sch.parallel(...)
 sch.unroll(...)
