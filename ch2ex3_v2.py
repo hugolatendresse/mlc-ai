@@ -112,24 +112,20 @@ IPython.display.Code(sch.mod.script(), language="python")
 C = sch.get_block("C", func_name="bmm_relu")
 i0, i1, i2_0, i2_1 = sch.get_loops(C)
 sch.vectorize(i2_1)
-IPython.display.Code(sch.mod.script(), language="python")
 
 
 # Step 5. vectorize / parallel / unroll
-Y_update = sch.get_block("Y_update")
+Y_update = sch.get_block("Y_update", func_name="bmm_relu")
 i0, i1, i2_0, i2_1, ax = sch.get_loops(Y_update)
 ax_0, ax_1 = sch.split(ax, [32, 4])
 sch.reorder(ax_0, ax_1, i2_1)
+
+i0, i1, i2_0, i2_1_init = sch.get_loops(Y_init)
+sch.vectorize(i2_1_init)
+
+i0, i1, i2_0, ax_0, ax_1, i2_1 = sch.get_loops(Y_update)
+sch.unroll(ax_1)
 IPython.display.Code(sch.mod.script(), language="python")
-
-sch.vectorize(...)
-sch.parallel(...)
-sch.unroll(...)
-...
-
-IPython.display.Code(sch.mod.script(), language="python")
-
-
 
 
 # Final check for correctness
@@ -140,3 +136,18 @@ c_check = tvm.nd.array(np.random.rand(N, I, J).astype("float32"))
 rt_lib_check["bmm_relu"](a_check, b_check, c_check)
 check_actual = c_check.numpy()
 np.testing.assert_allclose(actual=check_actual, desired=expected, atol=0.001, rtol=0.001)
+
+# Build and evaluate
+before_rt_lib = tvm.build(MyBmmRelu, target="llvm")
+after_rt_lib = tvm.build(sch.mod, target="llvm")
+a_tvm = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
+b_tvm = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
+c_tvm = tvm.nd.array(np.random.rand(16, 128, 128).astype("float32"))
+after_rt_lib["bmm_relu"](a_tvm, b_tvm, c_tvm)
+before_timer = before_rt_lib.time_evaluator("bmm_relu", tvm.cpu())
+print("Before transformation:")
+print(before_timer(a_tvm, b_tvm, c_tvm))
+
+f_timer = after_rt_lib.time_evaluator("bmm_relu", tvm.cpu())
+print("After transformation:")
+print(f_timer(a_tvm, b_tvm, c_tvm))
