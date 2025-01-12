@@ -71,13 +71,11 @@ b_tvm_target = tvm.nd.array(n)
 c_tvm_target = tvm.nd.array(np.random.rand(N, I, J).astype("float32"))
 rt_lib_target["bmm_relu_target"](a_tvm_target, b_tvm_target, c_tvm_target)
 
-
 rt_lib = tvm.build(MyBmmRelu, target="llvm")
 a_tvm = tvm.nd.array(a)
 b_tvm = tvm.nd.array(n)
 c_tvm = tvm.nd.array(np.random.rand(N, I, J).astype("float32"))
 rt_lib["bmm_relu"](a_tvm, b_tvm, c_tvm)
-
 
 actual_tvm = c_tvm.numpy()
 expected_tvm = c_tvm_target.numpy()
